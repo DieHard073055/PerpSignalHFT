@@ -1,0 +1,52 @@
+[package]
+name = "perp_signal_hft"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.37", default-features = false, features = ["full", "net", "sync"] }
+tokio-tungstenite = { version = "0.21.0", features = ["native-tls"] }
+futures-util = "0.3.31"
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+rand = "0.9.1"
+memmap2 = "0.9.5"
+clap = { version = "4.5.39", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+reqwest = { version = "0.12.19", features = ["json"] }
+anyhow = "1.0.98"
+url = "2.5.4"
+futures = "0.3.31"
+
+[[bin]]
+name = "binary-format"
+path = "src/bin/binary_format.rs"
+[[bin]]
+name = "binance-websockets"
+path = "src/bin/binance_websockets.rs"
+[[bin]]
+name = "shm-queue"
+path = "src/bin/shm_queue.rs"
+[[bin]]
+name = "shm-q-pb"
+path = "src/bin/shm_queue/producer_bin.rs"
+[[bin]]
+name = "shm-q-cb"
+path = "src/bin/shm_queue/consumer_bin.rs"
+[[bin]]
+name = "shm-q-p"
+path = "src/bin/shm_queue/producer.rs"
+[[bin]]
+name = "shm-q-c"
+path = "src/bin/shm_queue/consumer.rs"
+[[bin]]
+name = "tcp-s"
+path = "src/bin/tcp/server.rs"
+[[bin]]
+name = "tcp-c-a"
+path = "src/bin/tcp/client_async.rs"
+[[bin]]
+name = "tcp-c"
+path = "src/bin/tcp/client.rs"
