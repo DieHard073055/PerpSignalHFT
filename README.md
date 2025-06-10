@@ -39,6 +39,7 @@ Low-latency perp-trade forwarding service. Subscribes to Binance USDT-perpetual 
 - We ignore the trade type flag `MARKET`, `ADL`, `INSURANCE_FUND`.
 - The only assets we will subscribe to are USDT perps from `wss://fstream.binance.com/stream`
 - We are only subscribing to the recent trades on the USDT perps.
+- We are not going to subscribe to more than 10 perp pairs.
 - Network connection is expected to be robust between binance -> this service -> downstream hft strategy.
   - binance websocket does have some retry logic.
 
