@@ -26,7 +26,11 @@ pub enum PipelineError {
 }
 
 async fn initialize_encoder(assets: Vec<String>) -> Result<(BinaryFormat, Vec<u8>), PipelineError> {
-    tracing::info!("Initializing encoder for {} assets: {:?}", assets.len(), assets);
+    tracing::info!(
+        "Initializing encoder for {} assets: {:?}",
+        assets.len(),
+        assets
+    );
 
     let asset_len = assets.len();
 
@@ -46,7 +50,10 @@ async fn initialize_encoder(assets: Vec<String>) -> Result<(BinaryFormat, Vec<u8
     let mut encoder = BinaryFormat::new().with_assets(assets)?;
     let mut header = Vec::new();
     encoder.write_header(&mut header, ts, &prices, &qtys)?;
-    tracing::info!("Encoder initialized successfully with {} byte header", header.len());
+    tracing::info!(
+        "Encoder initialized successfully with {} byte header",
+        header.len()
+    );
     Ok((encoder, header))
 }
 
@@ -79,7 +86,11 @@ pub async fn handle_trades_shm(
     capacity: u32,
     rx: UnboundedReceiver<TradeMessage>,
 ) -> Result<(), PipelineError> {
-    tracing::info!("Setting up SHM queue: name='{}', capacity={} bytes", name, capacity);
+    tracing::info!(
+        "Setting up SHM queue: name='{}', capacity={} bytes",
+        name,
+        capacity
+    );
     let queue = Arc::new(ShmQueue::create(&name, capacity)?);
     tracing::info!("SHM queue created successfully");
     let (encoder, header) = initialize_encoder(assets).await?;

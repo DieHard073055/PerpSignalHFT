@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 
+
+const SCALE_FACTOR: f64 = 100000.0;
+
 #[derive(Debug, thiserror::Error)]
 pub enum BinaryFormatError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
     #[error("Invalid asset ID: {0}")]
-    InvalidAssetId(u8),
+    InvalidAssetId(String),
 
     #[error("Invalid symbol: {0}")]
     InvalidSymbol(String),
@@ -23,6 +26,9 @@ pub enum BinaryFormatError {
 
     #[error("Too many assets (max 127)")]
     TooManyAssets,
+
+    #[error("Overflow error")]
+    Overflow,
 }
 
 /// variable length integer encoding/decoding
@@ -128,22 +134,13 @@ pub struct BinaryFormat {
 
 impl Default for BinaryFormat {
     fn default() -> Self {
-        let assets: Vec<String> = Vec::new();
-        let asset_len = assets.len();
         let asset_to_id = HashMap::new();
 
         BinaryFormat {
             version: 1,
-            assets,
+            assets: vec![],
             asset_to_id,
-            states: vec![
-                AssetState {
-                    last_timestamp: 0,
-                    last_price: 0.0,
-                    last_quantity: 0.0,
-                };
-                asset_len
-            ],
+            states: Vec::new(),
         }
     }
 }
@@ -269,7 +266,19 @@ impl BinaryFormat {
     }
 
     pub fn encode(&mut self, trade: &Trade) -> Result<Vec<u8>, BinaryFormatError> {
-        let mut buffer = Vec::new();
+        let mut buffer = Vec::with_capacity(64);
+        // Why did i set it to 64?
+        // 
+        // Symbol:
+        // Maximum of 32 bytes (including UTF-8 data and length byte, if the symbol length is up to 31 characters).
+        // Timestamp:
+        // Varint (worst case): 10 bytes.
+        // Price Delta:
+        // Varint (worst case): 10 bytes.
+        // Quantity:
+        // Varint (worst case): 10 bytes.
+        // Total Size = 32 + 10 + 10 + 10  = 62 bytes.
+
         self.write_message(trade, &mut buffer)?;
         Ok(buffer)
     }
@@ -299,13 +308,16 @@ impl BinaryFormat {
 
         let state = &mut self.states[asset_id as usize & 0x7F];
 
-        let ts_delta = (trade.timestamp as i64) - (state.last_timestamp as i64);
+        let ts_delta = (trade.timestamp as i64)
+            .checked_sub(state.last_timestamp as i64)
+            .ok_or(BinaryFormatError::Overflow)?;
+
         varint::encode_signed(ts_delta, buffer)?;
 
-        let price_delta = ((trade.price - state.last_price) * 100000.0) as i64;
+        let price_delta = ((trade.price - state.last_price) * SCALE_FACTOR) as i64;
         varint::encode_signed(price_delta, buffer)?;
 
-        let qty_fixed = (trade.quantity * 100000.0) as u64;
+        let qty_fixed = (trade.quantity * SCALE_FACTOR) as u64;
         varint::encode_unsigned(qty_fixed, buffer)?;
 
         state.last_timestamp = trade.timestamp;
@@ -327,7 +339,11 @@ impl BinaryFormat {
         let asset_id = packed_byte & 0x7F;
 
         if asset_id as usize >= self.assets.len() {
-            return Err(BinaryFormatError::InvalidAssetId(asset_id));
+            return Err(BinaryFormatError::InvalidAssetId(format!(
+                "Asset ID {} out of bounds (0 <= ID < {})",
+                asset_id,
+                self.assets.len()
+            )));
         }
         let state = &mut self.states[asset_id as usize];
 
@@ -335,10 +351,10 @@ impl BinaryFormat {
         let timestamp = ((state.last_timestamp as i64) + ts_delta) as u64;
 
         let price_delta = varint::decode_signed(cursor)?;
-        let price = state.last_price + (price_delta as f64 / 100000.0);
+        let price = state.last_price + (price_delta as f64 / SCALE_FACTOR);
 
         let qty_fixed = varint::decode_unsigned(cursor)?;
-        let quantity = qty_fixed as f64 / 100000.0;
+        let quantity = qty_fixed as f64 / SCALE_FACTOR;
 
         state.last_timestamp = timestamp;
         state.last_price = price;

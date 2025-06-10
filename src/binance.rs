@@ -1,11 +1,16 @@
-use crate::format::Trade;
+// std
+use std::future::Future;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+// external
 use futures::stream::{self, StreamExt};
 use futures_util::SinkExt;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer};
-use std::future::Future;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+// internal
+use crate::format::Trade;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TradeMessageError {
@@ -77,7 +82,6 @@ impl TradeMessage {
             serde_json::from_str(&text).map_err(TradeMessageError::JsonParseError)?;
         // Convert the nested WebSocketTrade into TradeMessage
         Ok(Self::from_ws_payload(ws_message.data))
-
     }
 
     pub fn from_ws_payload(payload: WebSocketTrade) -> Self {
@@ -87,7 +91,10 @@ impl TradeMessage {
             price: payload.price,
             quantity: payload.quantity,
             is_buyer_maker: payload.is_buyer_maker,
-            received_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros(),
+            received_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_micros(),
         }
     }
 }
@@ -128,8 +135,7 @@ where
     }
 }
 
-
-//TODO: 
+//TODO:
 // - Adding lifecycle state tracking could improve resilliency and visibility.
 // - Add some intelligence in handling websocket disconnections
 // - Should move the urls and params to a configuration file.
@@ -159,17 +165,13 @@ impl BinanceWebsocket {
         tracing::info!("Connection to Binance WebSocket established successfully.");
         while let Some(message) = ws_stream.next().await {
             match message {
-                Ok(Message::Text(text)) => {
-                    match serde_json::from_str::<WebSocketMessage>(&text) {
-                        Ok(ws_message) => {
-                            // Convert WebSocketTrade (in `data`) to TradeMessage
-                            let trade_message = TradeMessage::from_ws_payload(ws_message.data);
-                            // Do something with the parsed trade message;
-                            let _ = s.send(trade_message);
-                        }
-                        Err(e) => tracing::warn!("Failed to parse trade message: {}", e),
+                Ok(Message::Text(text)) => match serde_json::from_str::<WebSocketMessage>(&text) {
+                    Ok(ws_message) => {
+                        let trade_message = TradeMessage::from_ws_payload(ws_message.data);
+                        let _ = s.send(trade_message);
                     }
-                }
+                    Err(e) => tracing::warn!("Failed to parse trade message: {}", e),
+                },
                 Ok(Message::Ping(ping)) => {
                     // Respond to pings to keep connection alive
                     if let Err(e) = ws_stream.send(Message::Pong(ping)).await {
