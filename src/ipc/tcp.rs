@@ -1,5 +1,7 @@
-// src/tcp_server.rs
+// std
 use std::net::SocketAddr;
+
+// external
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -26,7 +28,7 @@ pub async fn serve(
         });
     }
 }
-
+/// TODO: Add a heart beat mechanism to keep the client connection alive.
 async fn handshake_and_serve(
     mut socket: tokio::net::TcpStream,
     peer: SocketAddr,
@@ -53,6 +55,7 @@ async fn handshake_and_serve(
                 socket.write_all(&msg).await?;
             }
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                // Should disconnect clients who are lagging more than a defined threshold.
                 tracing::warn!("{} lagged by {} msgs", peer, skipped);
             }
             Err(broadcast::error::RecvError::Closed) => break,

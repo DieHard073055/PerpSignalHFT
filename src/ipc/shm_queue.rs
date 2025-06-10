@@ -1,7 +1,9 @@
-use memmap2::{MmapMut, MmapOptions};
+// std
 use std::os::unix::fs::OpenOptionsExt;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::{fs::OpenOptions, io, ptr};
+// external
+use memmap2::{MmapMut, MmapOptions};
 
 const HEADER_SIZE: usize = 4096;
 
