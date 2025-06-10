@@ -4,7 +4,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
-/// Runs the TCP server: listens, handshakes each client, and then streams messages.
 pub async fn serve(
     bind_addr: &str,
     header: Vec<u8>,
@@ -52,7 +51,6 @@ async fn handshake_and_serve(
             Ok(msg) => {
                 socket.write_all(&(msg.len() as u32).to_le_bytes()).await?;
                 socket.write_all(&msg).await?;
- 
             }
             Err(broadcast::error::RecvError::Lagged(skipped)) => {
                 tracing::warn!("{} lagged by {} msgs", peer, skipped);

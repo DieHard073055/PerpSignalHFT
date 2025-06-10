@@ -145,7 +145,6 @@ impl Default for BinaryFormat {
                 asset_len
             ],
         }
-
     }
 }
 impl BinaryFormat {
@@ -165,7 +164,7 @@ impl BinaryFormat {
 
         self.assets = assets;
         self.asset_to_id = asset_to_id;
-        self.states=vec![
+        self.states = vec![
             AssetState {
                 last_timestamp: 0,
                 last_price: 0.0,

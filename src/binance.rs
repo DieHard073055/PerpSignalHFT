@@ -139,20 +139,14 @@ where
     }
 }
 
-pub struct BinanceWebsocket {
-    pub assets: Vec<String>,
-}
+pub struct BinanceWebsocket {}
 impl BinanceWebsocket {
-    pub fn new(assets: Vec<String>) -> Self {
-        Self { assets }
-    }
     pub async fn start(
-        &self,
         s: tokio::sync::mpsc::UnboundedSender<TradeMessage>,
+        assets: &[String],
     ) -> Result<(), BinanceWebsocketError> {
         let url = {
-            let streams = self
-                .assets
+            let streams = assets
                 .iter()
                 .map(|asset| asset.to_lowercase() + "@trade")
                 .collect::<Vec<String>>()
@@ -285,7 +279,7 @@ impl BinanceClient {
         max_concurrency: usize,
     ) -> Vec<AvgPriceQty> {
         let client = self.clone();
-        stream::iter(symbols.into_iter()) // OWNED String
+        stream::iter(symbols.into_iter())
             .map(move |sym: String| {
                 let cli = client.clone();
                 async move { cli.avg_stats(sym).await.unwrap_or_default() }

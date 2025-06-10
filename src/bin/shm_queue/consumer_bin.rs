@@ -1,4 +1,5 @@
 // consumer.rs
+use clap::Parser;
 use perp_signal_hft::{
     format::{BinaryFormat, Trade},
     ipc::shm_queue::ShmQueue,
@@ -9,16 +10,28 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+/// Simple SHM Consumer
+#[derive(Parser)]
+#[clap(name = "shm_consumer", about = "Read trades from SHM queue")]
+struct Opts {
+    /// SHM queue name
+    #[clap(long, default_value = "trade_queue")]
+    queue_name: String,
+
+    /// Ring-buffer capacity in bytes
+    #[clap(long, default_value_t = 1024 * 1024)]
+    capacity: u32,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Shared memory queue must match producer
-    let capacity = 1024 * 1024;
-    let queue_name = "trade_queue";
+    let opts = Opts::parse();
+    let queue_name = &opts.queue_name;
+    let capacity = opts.capacity;
 
     // Init decoder and SHM queue
     let mut decoder = BinaryFormat::new();
     let queue = ShmQueue::create(queue_name, capacity)?;
 
-    // 1️⃣ Wait for START handshake
     loop {
         if let Some(data) = queue.pop()? {
             if data == b"START" {
@@ -29,7 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hint::spin_loop();
     }
 
-    // 2️⃣ Read header
     let header_buf = loop {
         if let Some(buf) = queue.pop()? {
             break buf;
@@ -39,7 +51,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     decoder.read_header(&mut Cursor::new(&header_buf))?;
     println!("Consumer: read HEADER");
 
-    // 3️⃣ Consume and decode 10 trades
     let mut count = 0;
     loop {
         let data = loop {
@@ -49,16 +60,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hint::spin_loop();
         };
 
-        // Decode binary format
         let mut cursor = Cursor::new(&data);
         let trade: Trade = decoder.read_message(&mut cursor)?;
 
-        // Calculate latency in nanoseconds
         let now_ns = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
         let latency = now_ns.saturating_sub(trade.timestamp);
         count += 1;
 
-        // Pretty print: ns with commas and ms with 3 decimal places
         println!(
             "Consumed {idx}: {trade:?}, latency {ms} millis",
             idx = count,

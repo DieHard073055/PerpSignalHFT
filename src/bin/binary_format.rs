@@ -13,7 +13,6 @@ fn main() -> Result<(), BinaryFormatError> {
     let mut encoder = BinaryFormat::new().with_assets(assets.clone())?;
     let mut decoder = BinaryFormat::new().with_assets(assets.clone())?;
 
-    // Write header into a buffer and have the decoder read it
     let reference_timestamp = 1_700_000_000_000;
     let reference_prices = vec![45_000.0, 2_500.5, 120.75];
     let reference_quantities = vec![0.0, 0.0, 0.0];
@@ -25,12 +24,10 @@ fn main() -> Result<(), BinaryFormatError> {
         &reference_prices,
         &reference_quantities,
     )?;
-    // decoder consumes the header and populates its symbol → index map
     decoder.read_header(&mut Cursor::new(&header_buf))?;
 
     let mut rng = rng();
     loop {
-        // generate a random Trade
         let idx = rng.random_range(0..assets.len());
         let symbol = assets[idx].clone();
         let ref_price = reference_prices[idx];
@@ -45,10 +42,8 @@ fn main() -> Result<(), BinaryFormatError> {
             is_buyer_maker: rng.random_bool(0.5),
         };
 
-        // encode the trade
         let encoded = encoder.encode(&trade)?;
 
-        // decode on a fresh cursor
         let decoded = decoder.read_message(&mut Cursor::new(&encoded))?;
         println!("Decoded trade: {:?}", decoded);
 

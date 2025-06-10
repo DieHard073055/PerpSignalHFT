@@ -29,10 +29,9 @@ async fn main() {
         .init();
     tracing::info!("starting binance websocket executor");
     let assets = vec!["BTCUSDT".to_string(), "ETHUSDT".to_string()];
-    let b = BinanceWebsocket::new(assets);
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-    let ws_handle = tokio::spawn(async move { b.start(tx).await });
+    let ws_handle = tokio::spawn(async move { BinanceWebsocket::start(tx, &assets).await });
     let print_handle = tokio::spawn(async move { print_messages(rx).await });
 
     let (ws_res, print_res) = tokio::join!(ws_handle, print_handle);
