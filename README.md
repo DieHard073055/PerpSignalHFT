@@ -63,7 +63,7 @@ Low-latency perp-trade forwarding service. Subscribes to Binance USDT-perpetual 
   - Ensures low-latency on every small write by turning off packet coalescing.
 
 Binary message layout:
-
+```
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                               HEADER (variable size)                         │
 ├─────────┬────────┬─────────────┬───────────┬─────────────────────────────────┤
@@ -120,7 +120,7 @@ TRADE MESSAGE:
 │  id=1,  │ delta=270     │ delta=300     │ fixed=150   │
 │ maker=1)│               │               │             │
 └─────────┴───────────────┴───────────────┴─────────────┘
-
+```
 ## Getting Started
 
 1. Clone and build:
