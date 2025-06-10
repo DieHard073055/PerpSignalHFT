@@ -7,6 +7,7 @@ Low-latency perp-trade forwarding service. Subscribes to Binance USDT-perpetual 
 ## Table of Contents
 
 - Features
+- Assumptions
 - Getting Started
 - CLI Usage
   - TCP Mode
@@ -26,6 +27,19 @@ Low-latency perp-trade forwarding service. Subscribes to Binance USDT-perpetual 
 - **Shared Memory IPC**: SPSC ring buffer under `/dev/shm` for sub-microsecond hand-off.  
 - **REST Fallback**: Compute reference prices/quantities via Binance REST API for header initialization.  
 - **Extensible CLI**: Subscribe up to 10 symbols; pick `tcp` or `shm` transport.  
+
+## Assumptions
+- The HFT strategy only needs the following fields:
+  - timestamp
+  - asset
+  - price
+  - quantity
+  - is_buyer_maker
+- We ignore the trade type flag `MARKET`, `ADL`, `INSURANCE_FUND`.
+- The only assets we will subscribe to are USDT perps from `wss://fstream.binance.com/stream`
+- We are only subscribing to the recent trades on the USDT perps.
+- Network connection is expected to be robust between binance -> this service -> downstream hft strategy.
+  - binance websocket does have some retry logic.
 
 ## Getting Started
 
@@ -54,14 +68,24 @@ SUBCOMMANDS:
 
 ### Demo
 
-Commands used in the demo
+Commands used in the demo. Please run the commands in the following order.
 
+- TCP Demo
 ```shell
 # First shell was running
 ./target/release/tcp-c
 
 # Second shell was running
 ./target/release/perp_signal_hft --assets BTCUSDT,ETHUSDT,SOLUSDT tcp --port 9000
+```
+- Shm Demo
+
+```shell
+# First shell was running
+./target/release/shm-q-cb
+
+# Second shell was running
+./target/release/perp_signal_hft --assets BTCUSDT,ETHUSDT,SOLUSDT shm --name trade_queue --capacity 1048576
 ```
 
 ### TCP Mode
