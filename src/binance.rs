@@ -5,8 +5,8 @@ use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer};
 use std::future::Future;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum TradeMessageError {
     #[error("invalid message from websocket")]
@@ -16,7 +16,7 @@ pub enum TradeMessageError {
     #[error("failed to send pong")]
     FailedToSendPong,
 }
-#[allow(dead_code)]
+
 #[derive(Debug, thiserror::Error)]
 pub enum BinanceWebsocketError {
     #[error("Failed to send pong: {0}")]
@@ -24,8 +24,25 @@ pub enum BinanceWebsocketError {
     #[error("web socket connection error: {0}")]
     WebsocketConnectionError(String),
 }
+#[derive(serde::Deserialize)]
+pub struct WebSocketMessage {
+    pub data: WebSocketTrade,
+}
 
-#[allow(dead_code)]
+#[derive(serde::Deserialize)]
+pub struct WebSocketTrade {
+    #[serde(rename = "T")]
+    pub timestamp: u64,
+    #[serde(rename = "s")]
+    pub asset: String,
+    #[serde(rename = "p")]
+    pub price: String,
+    #[serde(rename = "q")]
+    pub quantity: String,
+    #[serde(rename = "m")]
+    pub is_buyer_maker: bool,
+}
+
 #[derive(Debug)]
 pub struct TradeMessage {
     pub timestamp: u64,
@@ -33,6 +50,7 @@ pub struct TradeMessage {
     pub price: String,
     pub quantity: String,
     pub is_buyer_maker: bool,
+    // To measure the latency within the internal systems.
     pub received_at: u128,
 }
 
@@ -48,58 +66,29 @@ impl TradeMessage {
             is_buyer_maker: self.is_buyer_maker,
         }
     }
-    #[allow(dead_code)]
+
     pub fn create_from_ws(msg: Message) -> Result<Self, TradeMessageError> {
         let text = match msg {
             Message::Text(t) => t,
             _ => return Err(TradeMessageError::InvalidMessageFromWebsocket),
         };
+        // Deserialize the full WebSocket message
+        let ws_message: WebSocketMessage =
+            serde_json::from_str(&text).map_err(TradeMessageError::JsonParseError)?;
+        // Convert the nested WebSocketTrade into TradeMessage
+        Ok(Self::from_ws_payload(ws_message.data))
 
-        let json: serde_json::Value = serde_json::from_str(&text)?;
+    }
 
-        let data = json.get("data").ok_or(TradeMessageError::JsonParseError(
-            serde_json::Error::custom("missing `data` field"),
-        ))?;
-
-        let timestamp = // std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
-        data
-            .get("T")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| serde_json::Error::custom("`T` not u64"))?;
-
-        let asset = data
-            .get("s")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| serde_json::Error::custom("`s` not str"))?
-            .to_string();
-
-        let price = data
-            .get("p")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| serde_json::Error::custom("`p` not str"))?
-            .to_string();
-        let quantity = data
-            .get("q")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| serde_json::Error::custom("`q` not str"))?
-            .to_string();
-
-        let is_buyer_maker = data
-            .get("m")
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| serde_json::Error::custom("`m` not bool"))?;
-
-        Ok(Self {
-            timestamp,
-            asset,
-            price,
-            quantity,
-            is_buyer_maker,
-            received_at: std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_micros(),
-        })
+    pub fn from_ws_payload(payload: WebSocketTrade) -> Self {
+        TradeMessage {
+            timestamp: payload.timestamp,
+            asset: payload.asset,
+            price: payload.price,
+            quantity: payload.quantity,
+            is_buyer_maker: payload.is_buyer_maker,
+            received_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros(),
+        }
     }
 }
 
@@ -139,6 +128,11 @@ where
     }
 }
 
+
+//TODO: 
+// - Adding lifecycle state tracking could improve resilliency and visibility.
+// - Add some intelligence in handling websocket disconnections
+// - Should move the urls and params to a configuration file.
 pub struct BinanceWebsocket {}
 impl BinanceWebsocket {
     pub async fn start(
@@ -154,7 +148,7 @@ impl BinanceWebsocket {
             format!("wss://fstream.binance.com/stream?streams={}", streams)
         };
 
-        tracing::info!("attempting to connect to {}", url);
+        tracing::debug!("Attempting to connect to {}", url);
         // wrap the async connect in a zero-arg closure
         let connect_op = || connect_async(&url);
 
@@ -162,15 +156,18 @@ impl BinanceWebsocket {
             .await
             .map_err(|e| BinanceWebsocketError::WebsocketConnectionError(e.to_string()))?;
 
-        tracing::info!("connected to the websocket!");
+        tracing::info!("Connection to Binance WebSocket established successfully.");
         while let Some(message) = ws_stream.next().await {
             match message {
                 Ok(Message::Text(text)) => {
-                    match TradeMessage::create_from_ws(Message::Text(text)) {
-                        Ok(msg) => {
-                            let _ = s.send(msg);
+                    match serde_json::from_str::<WebSocketMessage>(&text) {
+                        Ok(ws_message) => {
+                            // Convert WebSocketTrade (in `data`) to TradeMessage
+                            let trade_message = TradeMessage::from_ws_payload(ws_message.data);
+                            // Do something with the parsed trade message;
+                            let _ = s.send(trade_message);
                         }
-                        Err(e) => tracing::warn!("bag message: {}", e),
+                        Err(e) => tracing::warn!("Failed to parse trade message: {}", e),
                     }
                 }
                 Ok(Message::Ping(ping)) => {
@@ -205,7 +202,7 @@ pub enum BinanceError {
     Serde(#[from] serde_json::Error),
 }
 
-// custom deserializer for string→f64
+/// Custom deserializer for converting a string into a `f64`
 fn de_string_to_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
 where
     D: Deserializer<'de>,
