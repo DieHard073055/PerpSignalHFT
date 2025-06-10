@@ -34,6 +34,7 @@ async fn handshake_and_serve(
     header: Vec<u8>,
     broadcaster: broadcast::Sender<Vec<u8>>,
 ) -> Result<(), std::io::Error> {
+    socket.set_nodelay(true)?;
     let start = b"START";
     socket
         .write_all(&(start.len() as u32).to_le_bytes())
