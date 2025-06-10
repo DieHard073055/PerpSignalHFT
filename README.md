@@ -52,6 +52,18 @@ SUBCOMMANDS:
   shm    Fan out trades via shared memory ring buffer
 ```
 
+### Demo
+
+Commands used in the demo
+
+```shell
+# First shell was running
+./target/release/tcp-c
+
+# Second shell was running
+./target/release/perp_signal_hft --assets BTCUSDT,ETHUSDT,SOLUSDT tcp --port 9000
+```
+
 ### TCP Mode
 
 Start a TCP server on port 9000:
