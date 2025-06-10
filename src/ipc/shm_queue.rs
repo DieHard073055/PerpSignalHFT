@@ -31,15 +31,13 @@ impl ShmQueue {
             .write(true)
             .mode(0o600)
             .open(&path)?;
-        // ensure file is large enough for header + buffer
+
         let total_size = HEADER_SIZE + capacity as usize;
         file.set_len(total_size as u64)?;
 
-        // memory-map it
         let mut mmap = unsafe { MmapOptions::new().len(total_size).map_mut(&file)? };
         let header_ptr = mmap.as_mut_ptr() as *mut QueueHeader;
 
-        // initialize header if first time (capacity=0 means uninit)
         unsafe {
             if (*header_ptr).capacity == 0 {
                 (*header_ptr).capacity = capacity;
@@ -67,11 +65,8 @@ impl ShmQueue {
         if needed > free {
             return Err(io::Error::new(io::ErrorKind::Other, "Queue full"));
         }
-        // write length prefix
         self.write_at(tail & (cap - 1), &(data.len() as u32).to_le_bytes());
-        // write payload
         self.write_at((tail & (cap - 1)) + 4, data);
-        // advance tail
         header.tail.store(tail + needed, Ordering::Release);
         Ok(())
     }
@@ -85,14 +80,11 @@ impl ShmQueue {
         if head == tail {
             return Ok(None);
         }
-        // read length prefix
         let mut len_buf = [0u8; 4];
         self.read_at(head & (cap - 1), &mut len_buf);
         let len = u32::from_le_bytes(len_buf) as usize;
-        // read payload
         let mut data = vec![0u8; len];
         self.read_at((head & (cap - 1)) + 4, &mut data);
-        // advance head
         header.head.store(head + 4 + len as u32, Ordering::Release);
         Ok(Some(data))
     }
@@ -102,7 +94,6 @@ impl ShmQueue {
         let cap = self.capacity as usize;
         let off = offset as usize % cap;
         let end = off + bytes.len();
-        // get a mutable pointer from shared mmap without requiring &mut
         let base_ptr = unsafe { self.mmap.as_ptr().add(self.buf_off) };
         if end <= cap {
             let dst = (base_ptr as *mut u8).wrapping_add(off);
