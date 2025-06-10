@@ -8,6 +8,7 @@ Low-latency perp-trade forwarding service. Subscribes to Binance USDT-perpetual 
 
 - Features
 - Assumptions
+- Optimizations
 - Getting Started
 - CLI Usage
   - TCP Mode
@@ -40,6 +41,85 @@ Low-latency perp-trade forwarding service. Subscribes to Binance USDT-perpetual 
 - We are only subscribing to the recent trades on the USDT perps.
 - Network connection is expected to be robust between binance -> this service -> downstream hft strategy.
   - binance websocket does have some retry logic.
+
+## Optimizations
+1. Delta-Varint Encoding
+  - Zig-zag + varint for signed deltas in timestamps and prices, and unsigned for quantities.
+  - Shrinks each trade message down to the minimal number of bytes
+2. Header Pre-Calculation
+  - Fetch reference prices/quantities via REST, build a full header blob.
+  - Downstream clients only pay that cost once at startup.
+3. Typed, Zero-Copy JSON Parsing
+  - Custom Serde deserializer (`de_string_to_f64`) parses price/qty directly into f64.
+  - Avoids intermediate string allocations and repeated parsing.
+4. Exponential Backoff + Auto-Reconnect
+  - Wrap `connect async` in a reusable `retry_with_backoff`
+  - Automatic retries on network hiccups without busy-spinning
+5. Shared-Memory Ring Buffer
+  - Incase the downstream component is running in the same host.
+  - `ShmQueue` in `/dev/shm` with atomic head/tail, no syscall on push/pop.
+  - Sub-microsecond hand-off between processes.
+6. Disable Nagle (`TCP_NODELAY`)
+  - Ensures low-latency on every small write by turning off packet coalescing.
+
+Binary message layout:
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                               HEADER (variable size)                         │
+├─────────┬────────┬─────────────┬───────────┬─────────────────────────────────┤
+│ version │ #assets│ asset[0]    │ asset[1]  │  …                               │
+│ (1 B)   │  (1 B) │ len + name  │ len+name  │                                 │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ reference_timestamp (8 B little-endian)                                      │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ reference_prices[0] … prices[N-1]  (each 8 B little-endian f64)              │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ reference_quantities[0] … quantities[N-1]  (each 8 B little-endian f64)      │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                               TRADE MESSAGE                                 │
+├───────────────┬──────────────────┬─────────────────────┬─────────────────────┤
+│ symbol_id +   │ timestamp_delta  │ price_delta        │ quantity_fixed     │
+│ buyer_maker   │ (signed varint)  │ (signed varint)    │ (unsigned varint)   │
+│ (1 B)         │                  │                     │                     │
+└───────────────┴──────────────────┴─────────────────────┴─────────────────────┘
+
+Details:
+
+HEADER:
+┌────────┬───────┐
+│ 0x01   │0x03   │  ← version=1, 3 assets
+└────────┴───────┘
+
+Asset entries (for “BTCUSDT”, “ETHUSDT”, “SOLUSDT”):
+┌───────┬─────────────┐   ┌───────┬─────────────┐   ┌───────┬─────────────┐
+│0x06   │"BTCUSDT"    │   │0x06   │"ETHUSDT"    │   │0x06   │"SOLUSDT"    │
+└───────┴─────────────┘   └───────┴─────────────┘   └───────┴─────────────┘
+
+Reference timestamp:
+┌──────────────────────────────────────────────────┐
+│ 0x00 0x00 0x01 0x85 0xF2 0xA0 0x00 0x00          │  ← e.g. 1700000000000
+└──────────────────────────────────────────────────┘
+
+Reference prices (each f64 LE):
+┌──────────────────────────────────────────────────┐
+│ 0x40 B0 F8 54 …  (45000.0), etc.                 │
+└──────────────────────────────────────────────────┘
+
+Reference quantities (each f64 LE):
+┌──────────────────────────────────────────────────┐
+│ 0x00 00 00 00 …  (0.0), etc.                     │
+└──────────────────────────────────────────────────┘
+
+TRADE MESSAGE:
+┌─────────┐───────────────┬───────────────┬─────────────┐
+│ 0x81    │ 0x8E 0x02     │ 0xAC 0x02     │ 0x96 0x01   │
+│ (symbol │ timestamp     │ price_delta   │ quantity    │
+│  id=1,  │ delta=270     │ delta=300     │ fixed=150   │
+│ maker=1)│               │               │             │
+└─────────┴───────────────┴───────────────┴─────────────┘
 
 ## Getting Started
 
