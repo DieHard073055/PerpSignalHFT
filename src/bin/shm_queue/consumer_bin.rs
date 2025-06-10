@@ -40,7 +40,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Consumer: read HEADER");
 
     // 3️⃣ Consume and decode 10 trades
-    use std::time::Duration;
     let mut count = 0;
     loop {
         let data = loop {

@@ -7,11 +7,6 @@ use perp_signal_hft::ipc::tcp;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc::UnboundedReceiver};
-use tokio::{
-    io::AsyncWriteExt,
-    net::{TcpListener, TcpStream},
-    sync::Mutex,
-};
 
 
 #[derive(Debug, thiserror::Error)]
@@ -115,70 +110,6 @@ pub async fn handle_trades_tcp(
     Ok(())
 }
 
-/// No queues at all — just a shared list of live client sockets.
-pub async fn handle_trades_tcp_direct(
-    assets: Vec<String>,
-    bind_addr: String,
-    mut rx: UnboundedReceiver<TradeMessage>,
-) -> Result<(), PipelineError> {
-    let (mut encoder, header) = initialize_encoder(assets.clone()).await?;
-
-    let clients = Arc::new(Mutex::new(Vec::<TcpStream>::new()));
-
-    {
-        let clients = clients.clone();
-        let header  = header.clone();
-        tokio::spawn(async move {
-            let listener = TcpListener::bind(&bind_addr).await.unwrap();
-            tracing::info!(%bind_addr, "TCP server listening (direct)");
-            loop {
-                let (mut socket, peer) = listener.accept().await.unwrap();
-                tracing::info!(%peer, "new direct‐TCP client");
-
-                // 3a. protocol handshake: send START + header
-                let start = b"START";
-                socket.write_all(&(start.len() as u32).to_le_bytes()).await.unwrap();
-                socket.write_all(start).await.unwrap();
-
-                socket.write_all(&(header.len() as u32).to_le_bytes()).await.unwrap();
-                socket.write_all(&header).await.unwrap();
-
-                // 3b. now add to the shared list
-                clients.lock().await.push(socket);
-            }
-        });
-    }
-
-    let mut decoder = BinaryFormat::new();
-    decoder.read_header(&mut std::io::Cursor::new(&header))?;
-
-    while let Some(trade_msg) = rx.recv().await {
-        // serialize into bytes
-        let t = trade_msg;
-        let buf = encoder.encode(&t.to_trade())?;
-
-        // prefix-length framing
-        let mut frame = (buf.len() as u32).to_le_bytes().to_vec();
-        frame.extend_from_slice(&buf);
-
-        // take the lock once, then iterate in place
-        let mut guard = clients.lock().await;
-        let mut i = 0;
-        while i < guard.len() {
-            let sock = &mut guard[i];
-            // try writing; if it fails, drop the client
-            match sock.write_all(&frame).await {
-                Ok(()) => i += 1,
-                Err(_) => {
-                    tracing::warn!("dropping disconnected client");
-                    guard.swap_remove(i);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 pub async fn main() {

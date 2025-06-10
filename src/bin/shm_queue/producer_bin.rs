@@ -1,6 +1,6 @@
 use perp_signal_hft::binance::TradeMessage;
 use perp_signal_hft::{
-    format::{BinaryFormat, Trade},
+    format::BinaryFormat,
     ipc::shm_queue::ShmQueue,
 };
 use std::{

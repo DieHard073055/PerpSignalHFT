@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Connected to server!");
                 break s;
             }
-            Err(e) => {
+            Err(_) => {
                 //eprintln!("Failed to connect: {}. Retrying in 1s…", e);
                 thread::sleep(Duration::from_micros(10));
             }

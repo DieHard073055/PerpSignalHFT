@@ -61,11 +61,11 @@ impl TradeMessage {
             serde_json::Error::custom("missing `data` field"),
         ))?;
 
-        let timestamp = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
-        // data
-        //     .get("T")
-        //     .and_then(|v| v.as_u64())
-        //     .ok_or_else(|| serde_json::Error::custom("`T` not u64"))?;
+        let timestamp = // std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
+        data
+            .get("T")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| serde_json::Error::custom("`T` not u64"))?;
 
         let asset = data
             .get("s")
