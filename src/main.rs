@@ -72,9 +72,12 @@ async fn handle_trades<F, Fut>(
     callback(header.clone()).await;
     tracing::info!("Header sent, waiting for trades");
     while let Some(msg) = rx.recv().await {
-        match encoder.encode(&msg.to_trade()) {
-            Ok(bin) => callback(bin).await,
-            Err(e) => tracing::error!("encode error: {}", e),
+        match msg.to_trade(){
+            Ok(trade) => match encoder.encode(&trade) {
+                Ok(bin) => callback(bin).await,
+                Err(e) => tracing::error!("encode error: {}", e),
+            },
+            Err(e) => tracing::error!("failed to obtain trade, invalid trade params: {}", e.to_string())
         }
     }
 }

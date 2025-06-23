@@ -55,21 +55,21 @@ pub struct TradeMessage {
     pub price: String,
     pub quantity: String,
     pub is_buyer_maker: bool,
-    // To measure the latency within the internal systems.
+    // TODO: To measure the latency within the internal systems.
     pub received_at: u128,
 }
 
 impl TradeMessage {
-    pub fn to_trade(self) -> Trade {
-        let price: f64 = self.price.parse().unwrap();
-        let quantity: f64 = self.quantity.parse().unwrap();
-        Trade {
+    pub fn to_trade(self) -> Result<Trade, std::num::ParseFloatError> {
+        let price: f64 = self.price.parse()?;
+        let quantity: f64 = self.quantity.parse()?;
+        Ok(Trade {
             timestamp: self.timestamp,
             symbol: self.asset,
             price,
             quantity,
             is_buyer_maker: self.is_buyer_maker,
-        }
+        })
     }
 
     pub fn create_from_ws(msg: Message) -> Result<Self, TradeMessageError> {
@@ -141,14 +141,18 @@ where
 // - Should move the urls and params to a configuration file.
 pub struct BinanceWebsocket {}
 impl BinanceWebsocket {
-    pub async fn start(
+    pub async fn start<S, I>(
         s: tokio::sync::mpsc::UnboundedSender<TradeMessage>,
-        assets: &[String],
-    ) -> Result<(), BinanceWebsocketError> {
+        assets: I,
+    ) -> Result<(), BinanceWebsocketError> 
+    where
+        S: AsRef<str> + Send,
+        I: IntoIterator<Item = S>,
+    {
         let url = {
             let streams = assets
-                .iter()
-                .map(|asset| asset.to_lowercase() + "@trade")
+                .into_iter()
+                .map(|s| s.as_ref().to_lowercase() + "@trade")
                 .collect::<Vec<String>>()
                 .join("/");
             format!("wss://fstream.binance.com/stream?streams={}", streams)

@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             is_buyer_maker,
             received_at: ts as u128,
         };
-        let trade = b.to_trade();
+        let trade = b.to_trade().unwrap();
         let encoded = encoder.encode(&trade)?;
         queue.push(&encoded)?;
         println!("Produced {}: {:?}", i, trade);
