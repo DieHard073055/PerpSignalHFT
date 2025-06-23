@@ -249,10 +249,14 @@ impl BinanceClient {
     }
 
     /// Fetch recent trades for `symbol` and compute their average price & qty.
-    pub async fn avg_stats(&self, symbol: String) -> Result<AvgPriceQty, BinanceError> {
+    pub async fn avg_stats<S>(&self, symbol: S) -> Result<AvgPriceQty, BinanceError> 
+    where
+        S: AsRef<str>
+    {
+        let sym = symbol.as_ref();
         let url = self
             .base
-            .join(&format!("/fapi/v1/trades?symbol={}", symbol))?;
+            .join(&format!("/fapi/v1/trades?symbol={}", sym))?;
 
         // GET … → Vec<RawTrade>
         let trades: Vec<RawTrade> = self.http.get(url).send().await?.json().await?;
@@ -272,14 +276,17 @@ impl BinanceClient {
     }
 
     /// Compute averages for all symbols, up to `max_concurrency` at a time.
-    pub async fn avg_stats_batch(
+    pub async fn avg_stats_batch<S>(
         &self,
-        symbols: Vec<String>,
+        symbols: impl IntoIterator<Item=S>,
         max_concurrency: usize,
-    ) -> Vec<AvgPriceQty> {
+    ) -> Vec<AvgPriceQty> 
+    where
+        S: AsRef<str> + Send + 'static,
+    {
         let client = self.clone();
         stream::iter(symbols.into_iter())
-            .map(move |sym: String| {
+            .map(move |sym| {
                 let cli = client.clone();
                 async move { cli.avg_stats(sym).await.unwrap_or_default() }
             })
